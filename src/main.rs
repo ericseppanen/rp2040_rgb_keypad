@@ -19,6 +19,9 @@ pub static BOOT2: [u8; 256] = rp2040_boot2::BOOT_LOADER_GENERIC_03H;
 /// if your board has a different frequency
 const XTAL_FREQ_HZ: u32 = 12_000_000u32;
 
+/// The I2C address of the TCA9555 io register chip.
+const TCA9555_I2C_ADDR: u8 = 0x20;
+
 #[rp2040_hal::entry]
 fn main() -> ! {
     // Grab our singleton objects
@@ -53,13 +56,7 @@ fn main() -> ! {
     );
 
     // Configure GPIO25 as an output
-    let mut led_pin = pins.gpio25.into_push_pull_output();
-    // loop {
-    //     led_pin.set_high().unwrap();
-    //     timer.delay_ms(500);
-    //     led_pin.set_low().unwrap();
-    //     timer.delay_ms(500);
-    // }
+    // let mut led_pin = pins.gpio25.into_push_pull_output();
 
     // Set up an I2C bus to read the keyboard state.
     let mut i2c;
@@ -76,35 +73,6 @@ fn main() -> ! {
             125_000_000.Hz(),
         );
     }
-
-    let i2c_addr = 0x20u8;
-    {
-        // // Scan for devices on the bus by attempting to read from them
-        // use embedded_hal::i2c::I2c;
-        // //use embedded_hal_02::prelude::_embedded_hal_blocking_i2c_Read;
-
-        // for addr in 0..=127u8 {
-        //     let mut readbuf: [u8; 1] = [0; 1];
-        //     let result = i2c.read(addr, &mut readbuf);
-        //     if result.is_ok() {
-        //         i2c_addr = addr;
-        //         break;
-        //     }
-        // }
-    }
-
-    // // Write some data to a device at 0x2c
-    // //use embedded_hal_02::prelude::_embedded_hal_blocking_i2c_Write;
-
-    // i2c.write(0x2Cu8, &[1, 2, 3]).unwrap();
-
-    // // Write and then read from a device at 0x3a
-    // //use embedded_hal_02::prelude::_embedded_hal_blocking_i2c_WriteRead;
-
-    // let mut readbuf: [u8; 1] = [0; 1];
-    // i2c.write_read(0x2Cu8, &[1, 2, 3], &mut readbuf).unwrap();
-    //
-    //
 
     // Make sure SPI interrupt pin is set as an input. It's currently unused.
     let _spi_interrupt = pins.gpio3.into_floating_disabled();
@@ -131,7 +99,7 @@ fn main() -> ! {
         );
     }
 
-    use apa102_spi::{Apa102Pixel, Apa102Writer, PixelOrder, RGB8, SmartLedsWrite, u5};
+    use apa102_spi::{Apa102Pixel, Apa102Writer, PixelOrder, SmartLedsWrite, u5};
 
     let mut led_strip = Apa102Writer::new(spi, 1, PixelOrder::default());
 
@@ -140,19 +108,11 @@ fn main() -> ! {
     let mut led_cs = pins.gpio17.into_push_pull_output();
     led_cs.set_low().unwrap();
 
-    // // Specify pixel values as 8 bit RGB + 5 bit brightness
-    // let led_buffer = [Apa102Pixel {
-    //     red: 255,
-    //     green: 0,
-    //     blue: 0,
-    //     brightness: u5::new(1),
-    // }];
-    // led_strip.write(led_buffer);
-
     let mut rgb_buffer = [Apa102Pixel {
         red: 0,
         green: 0,
         blue: 0,
+        // Note: brightness is 0-31.
         brightness: u5::new(4),
     }; 16];
 
@@ -163,24 +123,20 @@ fn main() -> ! {
 
     loop {
         let input_port_register = [0u8];
-        let mut keyboard_state: [u8; 2] = [0xFF, 0x00];
-        let i2c_result;
-        {
-            //use embedded_hal::i2c::I2c as _;
-            //use embedded_hal_02::prelude::_embedded_hal_blocking_i2c_Read;
-
-            i2c_result = i2c.write_read(i2c_addr, &input_port_register, &mut keyboard_state);
+        let mut keyboard_buf: [u8; 2] = [0, 0];
+        // Note: keyboard bits are active low.
+        let mut keyboard_state = u16::MAX;
+        match i2c.write_read(TCA9555_I2C_ADDR, &input_port_register, &mut keyboard_buf) {
+            Ok(()) => {
+                keyboard_state = u16::from_le_bytes(keyboard_buf);
+            }
+            Err(_) => {}
         }
-        let keyboard_state = u16::from_le_bytes(keyboard_state);
 
         for (index, pixel) in &mut rgb_buffer.iter_mut().enumerate() {
             let this_key_hit: bool = ((keyboard_state >> index) & 0x01) == 0;
 
-            if i2c_result.is_err() {
-                pixel.red = 0;
-                pixel.green = 0;
-                pixel.blue = 255;
-            } else if this_key_hit {
+            if this_key_hit {
                 pixel.red = 255;
                 pixel.green = 0;
                 pixel.blue = 0;
@@ -196,7 +152,6 @@ fn main() -> ! {
             }
         }
 
-        // Brightness is set to maximum value (31) in `impl From<RGB8> for Apa102Pixel`
         led_strip.write(rgb_buffer).unwrap();
 
         timer.delay_ms(10);
