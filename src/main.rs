@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use embedded_hal::{delay::DelayNs, digital::StatefulOutputPin};
+use embedded_hal::{delay::DelayNs, i2c::I2c};
 use embedded_hal_02::digital::v2::OutputPin;
 use hal::pac;
 use panic_halt as _;
@@ -61,30 +61,37 @@ fn main() -> ! {
     //     timer.delay_ms(500);
     // }
 
-    // use fugit::RateExtU32;
-    // use rp2040_hal::{i2c::I2C, pac};
+    // Set up an I2C bus to read the keyboard state.
+    let mut i2c;
+    {
+        use fugit::RateExtU32;
+        use rp2040_hal::i2c::I2C;
 
-    // let mut i2c = I2C::i2c1(
-    //     pac.I2C1,
-    //     pins.gpio18.reconfigure(), // sda
-    //     pins.gpio19.reconfigure(), // scl
-    //     400.kHz(),
-    //     &mut pac.RESETS,
-    //     125_000_000.Hz(),
-    // );
+        i2c = I2C::i2c0(
+            pac.I2C0,
+            pins.gpio4.reconfigure(), // sda
+            pins.gpio5.reconfigure(), // scl
+            400.kHz(),
+            &mut pac.RESETS,
+            125_000_000.Hz(),
+        );
+    }
 
-    // // Scan for devices on the bus by attempting to read from them
-    // use embedded_hal::i2c::I2c;
-    // //use embedded_hal_02::prelude::_embedded_hal_blocking_i2c_Read;
+    let i2c_addr = 0x20u8;
+    {
+        // // Scan for devices on the bus by attempting to read from them
+        // use embedded_hal::i2c::I2c;
+        // //use embedded_hal_02::prelude::_embedded_hal_blocking_i2c_Read;
 
-    // for i in 0..=127u8 {
-    //     let mut readbuf: [u8; 1] = [0; 1];
-    //     let result = i2c.read(i, &mut readbuf);
-    //     if let Ok(d) = result {
-    //         // Do whatever work you want to do with found devices
-    //         // writeln!(uart, "Device found at address{:?}", i).unwrap();
-    //     }
-    // }
+        // for addr in 0..=127u8 {
+        //     let mut readbuf: [u8; 1] = [0; 1];
+        //     let result = i2c.read(addr, &mut readbuf);
+        //     if result.is_ok() {
+        //         i2c_addr = addr;
+        //         break;
+        //     }
+        // }
+    }
 
     // // Write some data to a device at 0x2c
     // //use embedded_hal_02::prelude::_embedded_hal_blocking_i2c_Write;
@@ -98,6 +105,9 @@ fn main() -> ! {
     // i2c.write_read(0x2Cu8, &[1, 2, 3], &mut readbuf).unwrap();
     //
     //
+
+    // Make sure SPI interrupt pin is set as an input. It's currently unused.
+    let _spi_interrupt = pins.gpio3.into_floating_disabled();
 
     // Set up a SPI bus to write data to the LEDs.
     let spi;
@@ -152,8 +162,29 @@ fn main() -> ! {
     }
 
     loop {
-        for pixel in &mut rgb_buffer {
-            if pixel.blue == 0 && pixel.green < 255 {
+        let input_port_register = [0u8];
+        let mut keyboard_state: [u8; 2] = [0xFF, 0x00];
+        let i2c_result;
+        {
+            //use embedded_hal::i2c::I2c as _;
+            //use embedded_hal_02::prelude::_embedded_hal_blocking_i2c_Read;
+
+            i2c_result = i2c.write_read(i2c_addr, &input_port_register, &mut keyboard_state);
+        }
+        let keyboard_state = u16::from_le_bytes(keyboard_state);
+
+        for (index, pixel) in &mut rgb_buffer.iter_mut().enumerate() {
+            let this_key_hit: bool = ((keyboard_state >> index) & 0x01) == 0;
+
+            if i2c_result.is_err() {
+                pixel.red = 0;
+                pixel.green = 0;
+                pixel.blue = 255;
+            } else if this_key_hit {
+                pixel.red = 255;
+                pixel.green = 0;
+                pixel.blue = 0;
+            } else if pixel.blue == 0 && pixel.green < 255 {
                 pixel.red -= 1;
                 pixel.green += 1;
             } else if pixel.red == 0 && pixel.blue < 255 {
