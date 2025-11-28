@@ -5,7 +5,11 @@ edition = "2024"
 
 [dependencies]
 panic-halt = "0.2.0"
-rp2040-hal = { version = "0.11.0", features = ["binary-info", "critical-section-impl", "rt", "defmt"] }
+rp2040-hal = { version = "0.11.0", features = ["binary-info", "critical-section-impl", "rt"] }
 embedded-hal = "1.0.0"
+embedded-hal-02 = { package = "embedded-hal", version = "0.2.7" }
 rp2040-boot2 = "0.3.0"
 cortex-m-rt = "0.7"
+usbd-human-interface-device = { version = "0.6.0", features = [] }
+usb-device = "0.3.2"
+fugit = "0.3.9"
