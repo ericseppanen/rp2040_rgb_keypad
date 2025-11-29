@@ -14,3 +14,4 @@ usbd-human-interface-device = { version = "0.6.0", features = [] }
 usb-device = "0.3.2"
 fugit = "0.3.9"
 apa102-spi = "0.5.1"
+rand = { version = "0.8.5", default-features = false }

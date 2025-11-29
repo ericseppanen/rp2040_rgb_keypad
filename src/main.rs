@@ -5,7 +5,8 @@ use embedded_hal::{delay::DelayNs, i2c::I2c};
 use embedded_hal_02::digital::v2::OutputPin;
 use hal::pac;
 use panic_halt as _;
-use rp2040_hal as hal;
+use rand::Rng;
+use rp2040_hal::{self as hal, rosc::RingOscillator};
 
 /// The linker will place this boot block at the start of our program image. We
 /// need this to help the ROM bootloader get our code up and running.
@@ -108,8 +109,12 @@ fn main() -> ! {
     let mut led_cs = pins.gpio17.into_push_pull_output();
     led_cs.set_low().unwrap();
 
+    let mut rng = RingOscillator::new(pac.ROSC).initialize();
+
+    let random_number: u8 = rng.r#gen();
+
     let mut rgb_buffer = [Apa102Pixel {
-        red: 0,
+        red: 255,
         green: 0,
         blue: 0,
         // Note: brightness is 0-31.
