@@ -138,7 +138,11 @@ fn main() -> ! {
             Err(_) => {}
         }
 
-        for (index, pixel) in &mut rgb_buffer.iter_mut().enumerate() {
+        let mut new_rgb = rgb_buffer;
+
+        for index in 0..rgb_buffer.len() {
+            let pixel = &mut new_rgb[index];
+
             let this_key_hit: bool = ((keyboard_state >> index) & 0x01) == 0;
 
             if this_key_hit {
@@ -156,6 +160,8 @@ fn main() -> ! {
                 pixel.red += 1;
             }
         }
+
+        rgb_buffer = new_rgb;
 
         led_strip.write(rgb_buffer).unwrap();
 
